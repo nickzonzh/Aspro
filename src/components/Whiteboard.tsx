@@ -3,11 +3,12 @@ import {
   type CSSProperties,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
-import { Point, Stroke, StrokeTool, redrawCanvas } from '../lib/strokes'
+import { Point, Stroke, BOARD_WIDTH, ERASER_WIDTH, ERASER_HEIGHT, boardPoint, createBoardRenderer } from '../lib/strokes'
+
+import { createToolMotion } from '../lib/toolMotion'
 
 type Marker = {
   id: string
@@ -23,7 +24,7 @@ const MARKERS: Marker[] = [
   { id: 'green', label: 'Green', color: '#357258', ink: '#2f7a58' },
 ]
 
-const STORAGE_KEY = 'aspro:whiteboard:v1'
+const STORAGE_KEY = 'aspro:whiteboard:v2'
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -54,88 +55,73 @@ export function Whiteboard() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
   const boardRef = useRef<HTMLDivElement>(null)
-  const toolOverlayRef = useRef<HTMLDivElement>(null)
+  const rendererRef = useRef<ReturnType<typeof createBoardRenderer> | null>(null)
+  const motionRef = useRef<ReturnType<typeof createToolMotion> | null>(null)
   const activeStrokeRef = useRef<Stroke | null>(null)
+  const pointerIdRef = useRef<number | null>(null)
   const renderFrameRef = useRef<number | null>(null)
-  const previousPointerRef = useRef<Point | null>(null)
-  const markerPoseRef = useRef({ x: 0, y: 0, angle: -38 })
-
+  const previousPointerRef = useRef<{ x: number; y: number } | null>(null)
+  const angleRef = useRef(-38)
   const [strokes, setStrokes] = useState<Stroke[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
-      return saved ? (JSON.parse(saved) as Stroke[]) : []
-    } catch {
-      return []
-    }
+      if (saved) return JSON.parse(saved).strokes
+      // v1 used display pixels and did not record its original dimensions.
+      // Keep its source intact; interpret it on the original desktop-sized board.
+      const legacy = localStorage.getItem('aspro:whiteboard:v1')
+      return legacy ? JSON.parse(legacy) : []
+    } catch { return [] }
   })
+  const strokesRef = useRef(strokes)
   const [undoStack, setUndoStack] = useState<Stroke[][]>([])
   const [redoStack, setRedoStack] = useState<Stroke[][]>([])
-  const [activeTool, setActiveTool] = useState<StrokeTool | null>(null)
-  const [activeMarkerId, setActiveMarkerId] = useState('black')
-  const [pointerInside, setPointerInside] = useState(false)
-  const [isDrawing, setIsDrawing] = useState(false)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const activeIdRef = useRef<string | null>(null)
 
-  const activeMarker = useMemo(
-    () => MARKERS.find((marker) => marker.id === activeMarkerId) ?? MARKERS[0],
-    [activeMarkerId],
-  )
-
-  const render = useCallback(
-    (nextStrokes = strokes, inProgress = activeStrokeRef.current) => {
-      if (!canvasRef.current) return
-      redrawCanvas(canvasRef.current, nextStrokes, inProgress)
-    },
-    [strokes],
-  )
+  const render = useCallback(() => {
+    rendererRef.current?.render(strokesRef.current, activeStrokeRef.current)
+  }, [])
+  const scheduleRender = () => {
+    if (renderFrameRef.current !== null) return
+    renderFrameRef.current = requestAnimationFrame(() => {
+      renderFrameRef.current = null
+      render()
+    })
+  }
+  useEffect(() => {
+    strokesRef.current = strokes
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, strokes })) } catch { /* Optional storage. */ }
+    render()
+  }, [strokes, render])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(strokes))
-    } catch {
-      // The board still works if browser storage is unavailable.
-    }
-    render(strokes, null)
-  }, [render, strokes])
-
-  useEffect(() => {
-    const surface = surfaceRef.current
-    const canvas = canvasRef.current
-    if (!surface || !canvas) return
-
+    const canvas = canvasRef.current!, surface = surfaceRef.current!, board = boardRef.current!
+    const renderer = createBoardRenderer(canvas)
+    const motion = createToolMotion(board)
+    rendererRef.current = renderer
+    motionRef.current = motion
     const resize = () => {
       const rect = surface.getBoundingClientRect()
-      const dpr = window.devicePixelRatio || 1
-      canvas.width = Math.max(1, Math.round(rect.width * dpr))
-      canvas.height = Math.max(1, Math.round(rect.height * dpr))
-      canvas.style.width = `${rect.width}px`
-      canvas.style.height = `${rect.height}px`
-      render(strokes, activeStrokeRef.current)
+      renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1)
+      motion.dockAll(false)
+      motion.fitTray()
+      previousPointerRef.current = null
+      render()
     }
-
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(surface)
-    return () => observer.disconnect()
-  }, [render, strokes])
-
-  useEffect(() => {
+    window.addEventListener('resize', resize)
     return () => {
-      if (renderFrameRef.current) cancelAnimationFrame(renderFrameRef.current)
+      observer.disconnect()
+      window.removeEventListener('resize', resize)
+      motion.destroy()
+      if (renderFrameRef.current !== null) cancelAnimationFrame(renderFrameRef.current)
     }
-  }, [])
-
-  const pointFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>): Point => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-      pressure: event.pointerType === 'mouse' ? 0.5 : event.pressure || 0.5,
-    }
-  }
+  }, [render])
 
   const updateLighting = (clientX: number, clientY: number) => {
-    const board = boardRef.current
-    if (!board) return
+    const board = boardRef.current!
     const rect = board.getBoundingClientRect()
     const x = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100))
     const y = Math.min(100, Math.max(0, ((clientY - rect.top) / rect.height) * 100))
@@ -143,130 +129,95 @@ export function Whiteboard() {
     board.style.setProperty('--light-y', `${y}%`)
     board.style.setProperty('--light-shift', `${(x - 50) * 0.08}px`)
   }
-
-  const updateToolOverlay = (point: Point) => {
-    const overlay = toolOverlayRef.current
-    if (!overlay) return
-
+  const toolScale = () => Math.max(.65, Math.min(1, surfaceRef.current!.getBoundingClientRect().width / BOARD_WIDTH))
+  const updateTool = (clientX: number, clientY: number, drawing: boolean, pickup = true) => {
+    const id = activeIdRef.current
+    if (!id) return
     const previous = previousPointerRef.current
-    const dx = previous ? point.x - previous.x : 0
-    const dy = previous ? point.y - previous.y : 0
-    const speed = Math.hypot(dx, dy)
-
-    let targetAngle = markerPoseRef.current.angle
-    if (activeTool === 'marker' && speed > 0.35) {
-      const direction = Math.atan2(dy, dx) * (180 / Math.PI)
-      targetAngle = Math.max(-62, Math.min(-20, direction - 42))
-    } else if (activeTool === 'eraser' && speed > 0.35) {
-      targetAngle = Math.max(-12, Math.min(12, dx * 0.7))
+    const dx = previous ? clientX - previous.x : 0, dy = previous ? clientY - previous.y : 0
+    if (Math.hypot(dx, dy) > .35) {
+      const target = id === 'eraser'
+        ? Math.max(-12, Math.min(12, dx * .7))
+        : Math.max(-62, Math.min(-20, Math.atan2(dy, dx) * 180 / Math.PI - 42))
+      angleRef.current += (target - angleRef.current) * .18
     }
-
-    const pose = markerPoseRef.current
-    // Smooth the barrel angle, but keep the nib on the actual ink coordinate.
-    pose.x = point.x
-    pose.y = point.y
-    pose.angle += (targetAngle - pose.angle) * 0.18
-
-    overlay.style.setProperty('--tool-x', `${pose.x}px`)
-    overlay.style.setProperty('--tool-y', `${pose.y}px`)
-    overlay.style.setProperty('--tool-angle', `${pose.angle}deg`)
-    overlay.style.setProperty('--tool-press', isDrawing ? '1' : '0')
-    previousPointerRef.current = point
+    previousPointerRef.current = { x: clientX, y: clientY }
+    motionRef.current?.move(id, {
+      x: clientX, y: clientY, angle: angleRef.current,
+      scale: (id === 'eraser' ? .86 : drawing ? .86 : .88) * toolScale(),
+    }, drawing, pickup)
   }
-
-  const scheduleOverlayUpdate = (point: Point) => {
-    if (renderFrameRef.current) cancelAnimationFrame(renderFrameRef.current)
-    renderFrameRef.current = requestAnimationFrame(() => updateToolOverlay(point))
+  const sample = (event: { clientX: number; clientY: number; pointerType: string; pressure: number }): Point => {
+    const rect = surfaceRef.current!.getBoundingClientRect()
+    updateTool(event.clientX, event.clientY, true)
+    return {
+      ...boardPoint(event.clientX - rect.left, event.clientY - rect.top, rect.width),
+      pressure: event.pointerType === 'mouse' ? .5 : event.pressure || .5,
+      angle: angleRef.current,
+    }
   }
-
   const beginStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (event.button !== 0 && event.pointerType === 'mouse') return
-    if (!activeTool) return
-
+    if (!event.isPrimary || event.button !== 0 || !activeIdRef.current || activeStrokeRef.current) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    const point = pointFromEvent(event)
-
-    const stroke: Stroke = {
-      id: uid(),
-      tool: activeTool,
-      color: activeMarker.ink,
-      width: activeTool === 'eraser' ? 34 : 5.6,
+    pointerIdRef.current = event.pointerId
+    const point = sample(event)
+    const id = activeIdRef.current
+    const eraser = id === 'eraser'
+    const marker = MARKERS.find((item) => item.id === id) ?? MARKERS[0]
+    const displayScale = surfaceRef.current!.getBoundingClientRect().width / BOARD_WIDTH
+    const size = toolScale() / displayScale
+    activeStrokeRef.current = {
+      id: uid(), tool: eraser ? 'eraser' : 'marker', color: marker.ink,
+      width: eraser ? ERASER_WIDTH * .86 * size : 5.6 * size,
+      ...(eraser ? { height: ERASER_HEIGHT * .86 * size } : {}),
       points: [point],
     }
-
-    activeStrokeRef.current = stroke
-    setIsDrawing(true)
-    render(strokes, stroke)
-    scheduleOverlayUpdate(point)
+    render()
   }
-
   const moveStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const point = pointFromEvent(event)
-    updateLighting(event.clientX, event.clientY)
-    scheduleOverlayUpdate(point)
-
-    if (!activeStrokeRef.current || !isDrawing) return
-
-    const nativeEvent = event.nativeEvent as PointerEvent
-    const coalesced = typeof nativeEvent.getCoalescedEvents === 'function'
-      ? nativeEvent.getCoalescedEvents()
-      : []
-
-    if (coalesced.length > 1) {
-      const rect = event.currentTarget.getBoundingClientRect()
-      coalesced.forEach((sample: PointerEvent) => {
-        activeStrokeRef.current?.points.push({
-          x: sample.clientX - rect.left,
-          y: sample.clientY - rect.top,
-          pressure: sample.pointerType === 'mouse' ? 0.5 : sample.pressure || 0.5,
-        })
-      })
-    } else {
-      activeStrokeRef.current.points.push(point)
-    }
-
-    render(strokes, activeStrokeRef.current)
-  }
-
-  const finishStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const current = activeStrokeRef.current
-    if (!current) return
-
-    if (event.type === 'pointerup') {
-      const point = pointFromEvent(event)
-      const last = current.points.at(-1)
-      if (!last || last.x !== point.x || last.y !== point.y) current.points.push(point)
-      scheduleOverlayUpdate(point)
-    }
-
-    try {
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId)
+    if (activeStrokeRef.current && event.pointerId === pointerIdRef.current) {
+      const samples = event.nativeEvent.getCoalescedEvents?.() ?? []
+      for (const input of samples.length ? samples : [event.nativeEvent]) {
+        activeStrokeRef.current.points.push(sample(input))
       }
-    } catch {
-      // Capture can already be released by the browser on cancellation.
+      scheduleRender()
+    } else if (!activeStrokeRef.current && event.isPrimary) {
+      updateTool(event.clientX, event.clientY, false)
     }
-
-    setUndoStack((history) => [...history.slice(-39), strokes])
-    setRedoStack([])
-    setStrokes((existing) => [...existing, current])
+  }
+  const finishStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerId !== pointerIdRef.current || !activeStrokeRef.current) return
+    const current = activeStrokeRef.current
+    const cancelled = event.type !== 'pointerup'
+    if (!cancelled) {
+      const point = sample(event)
+      const last = current.points.at(-1)!
+      if (last.x !== point.x || last.y !== point.y) current.points.push(point)
+      const previous = strokesRef.current
+      setUndoStack((history) => [...history.slice(-39), previous])
+      setRedoStack([])
+      strokesRef.current = [...previous, current]
+      setStrokes(strokesRef.current)
+    }
     activeStrokeRef.current = null
-    setIsDrawing(false)
+    pointerIdRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    updateTool(event.clientX, event.clientY, false)
+    const board = boardRef.current!.getBoundingClientRect()
+    const outside = event.clientX < board.left || event.clientX > board.right || event.clientY < board.top || event.clientY > board.bottom
+    if (event.pointerType === 'touch' || cancelled || outside) motionRef.current?.dockAll()
+    render()
   }
-
-  const selectMarker = (id: string) => {
-    if (activeTool === 'marker' && activeMarkerId === id) {
-      setActiveTool(null)
-      return
-    }
-    setActiveMarkerId(id)
-    setActiveTool('marker')
+  const selectTool = (id: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    const old = activeIdRef.current
+    if (old) motionRef.current?.dock(old, event.detail !== 0)
+    const next = old === id ? null : id
+    activeIdRef.current = next
+    setActiveId(next)
+    previousPointerRef.current = null
+    angleRef.current = next === 'eraser' ? 0 : -38
+    if (next && event.detail !== 0) updateTool(event.clientX, event.clientY, false)
   }
-
-  const selectEraser = () => {
-    setActiveTool((tool) => (tool === 'eraser' ? null : 'eraser'))
-  }
-
   const undo = () => {
     const previous = undoStack.at(-1)
     if (!previous) return
@@ -274,7 +225,6 @@ export function Whiteboard() {
     setUndoStack((history) => history.slice(0, -1))
     setStrokes(previous)
   }
-
   const redo = () => {
     const next = redoStack[0]
     if (!next) return
@@ -282,108 +232,73 @@ export function Whiteboard() {
     setRedoStack((history) => history.slice(1))
     setStrokes(next)
   }
-
   const clear = () => {
     if (!strokes.length) return
     setUndoStack((history) => [...history.slice(-39), strokes])
     setRedoStack([])
     setStrokes([])
   }
-
   const saveImage = () => {
-    const source = canvasRef.current
-    if (!source) return
-    const exportCanvas = document.createElement('canvas')
-    exportCanvas.width = source.width
-    exportCanvas.height = source.height
-    const ctx = exportCanvas.getContext('2d')
-    if (!ctx) return
-
+    const source = canvasRef.current!
+    const exported = document.createElement('canvas')
+    exported.width = source.width
+    exported.height = source.height
+    const ctx = exported.getContext('2d')!
     ctx.fillStyle = '#f7f8f6'
-    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+    ctx.fillRect(0, 0, exported.width, exported.height)
     ctx.drawImage(source, 0, 0)
-
     const link = document.createElement('a')
     link.download = 'aspro-board.png'
-    link.href = exportCanvas.toDataURL('image/png')
+    link.href = exported.toDataURL('image/png')
     link.click()
   }
 
   return (
     <section className="whiteboard-stage" aria-label="Aspro whiteboard">
-      <div
-        className="whiteboard"
-        ref={boardRef}
-        onPointerMove={(event) => updateLighting(event.clientX, event.clientY)}
-      >
+      <div className="whiteboard" ref={boardRef}
+        onPointerMove={(event) => {
+          if (!event.isPrimary) return
+          updateLighting(event.clientX, event.clientY)
+          if (event.target !== canvasRef.current && !activeStrokeRef.current) updateTool(event.clientX, event.clientY, false)
+        }}
+        onPointerLeave={() => {
+          if (!activeStrokeRef.current) motionRef.current?.dockAll()
+          previousPointerRef.current = null
+        }}>
         <div className="frame-reflection" aria-hidden="true" />
         <div className="board-frame">
-          <div
-            className={`board-surface${activeTool ? ' has-active-tool' : ''}`}
-            ref={surfaceRef}
-            onPointerEnter={() => setPointerInside(true)}
-            onPointerLeave={() => {
-              setPointerInside(false)
-              previousPointerRef.current = null
-            }}
-          >
+          <div className={`board-surface${activeId ? ' has-active-tool' : ''}`} ref={surfaceRef}>
             <div className="surface-gloss" aria-hidden="true" />
-            <canvas
-              ref={canvasRef}
-              className="drawing-canvas"
-              aria-label="Drawing surface"
-              onPointerDown={beginStroke}
-              onPointerMove={moveStroke}
-              onPointerUp={finishStroke}
-              onPointerCancel={finishStroke}
-            />
-
-            <div
-              ref={toolOverlayRef}
-              className={`active-tool-overlay${pointerInside && activeTool ? ' is-visible' : ''}${isDrawing ? ' is-drawing' : ''}`}
-              aria-hidden="true"
-            >
-              {activeTool === 'marker' && <MarkerBody marker={activeMarker} active />}
-              {activeTool === 'eraser' && <EraserObject active />}
-            </div>
-
+            <canvas ref={canvasRef} className="drawing-canvas" aria-label="Drawing surface"
+              onPointerDown={beginStroke} onPointerMove={moveStroke} onPointerUp={finishStroke}
+              onPointerCancel={finishStroke} onLostPointerCapture={finishStroke} />
             <span className="board-mark" aria-hidden="true">ASPRO</span>
           </div>
-
           <div className="marker-tray" aria-label="Whiteboard tools">
             <div className="tray-inner">
               <div className="marker-rack" role="group" aria-label="Markers">
-                {MARKERS.map((marker) => {
-                  const selected = activeTool === 'marker' && activeMarkerId === marker.id
-                  return (
-                    <button
-                      type="button"
-                      className={`marker-slot${selected ? ' is-selected' : ''}`}
-                      key={marker.id}
-                      onClick={() => selectMarker(marker.id)}
-                      aria-label={`${marker.label} marker${selected ? ', selected' : ''}`}
-                      aria-pressed={selected}
-                    >
-                      <MarkerBody marker={marker} />
-                    </button>
-                  )
-                })}
+                {MARKERS.map((marker) => (
+                  <button type="button" className="marker-slot" key={marker.id} data-tool-slot={marker.id}
+                    onClick={(event) => selectTool(marker.id, event)}
+                    aria-label={`${marker.label} marker`} aria-pressed={activeId === marker.id}>
+                    <MarkerBody marker={marker} />
+                  </button>
+                ))}
               </div>
-
-              <button
-                type="button"
-                className={`eraser-slot${activeTool === 'eraser' ? ' is-selected' : ''}`}
-                onClick={selectEraser}
-                aria-label={`Eraser${activeTool === 'eraser' ? ', selected' : ''}`}
-                aria-pressed={activeTool === 'eraser'}
-              >
+              <button type="button" className="eraser-slot" data-tool-slot="eraser"
+                onClick={(event) => selectTool('eraser', event)} aria-label="Eraser" aria-pressed={activeId === 'eraser'}>
                 <EraserObject />
               </button>
             </div>
           </div>
         </div>
+        {MARKERS.map((marker) => (
+          <div className="tool-flight" data-tool-flight={marker.id} aria-hidden="true" key={marker.id}>
+            <MarkerBody marker={marker} active />
+          </div>
+        ))}
+        <div className="tool-flight" data-tool-flight="eraser" aria-hidden="true"><EraserObject active /></div>
       </div>
-
       <div className="utility-bar" aria-label="Board actions">
         <button type="button" onClick={undo} disabled={!undoStack.length}>Undo</button>
         <button type="button" onClick={redo} disabled={!redoStack.length}>Redo</button>
