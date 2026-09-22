@@ -479,15 +479,16 @@ h1 {
 
 .active-tool-overlay .marker-object {
   position: absolute;
-  left: -5px;
-  top: -12px;
-  transform-origin: 5px 12px;
+  /* The exposed nib tip is at (-3, 12.5) in marker-object coordinates. */
+  left: 3px;
+  top: -12.5px;
+  transform-origin: -3px 12.5px;
   transform: rotate(var(--tool-angle)) scale(.88);
   filter: drop-shadow(7px 12px 5px rgba(30,31,30,.22));
 }
 
 .active-tool-overlay.is-drawing .marker-object {
-  transform: rotate(var(--tool-angle)) translateY(2px) scale(.88);
+  transform: rotate(var(--tool-angle)) scale(.86);
   filter: drop-shadow(3px 5px 3px rgba(30,31,30,.24));
 }
 

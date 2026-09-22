@@ -162,13 +162,9 @@ export function Whiteboard() {
     }
 
     const pose = markerPoseRef.current
-    if (!previous) {
-      pose.x = point.x
-      pose.y = point.y
-    } else {
-      pose.x += (point.x - pose.x) * 0.72
-      pose.y += (point.y - pose.y) * 0.72
-    }
+    // Smooth the barrel angle, but keep the nib on the actual ink coordinate.
+    pose.x = point.x
+    pose.y = point.y
     pose.angle += (targetAngle - pose.angle) * 0.18
 
     overlay.style.setProperty('--tool-x', `${pose.x}px`)
@@ -235,6 +231,13 @@ export function Whiteboard() {
   const finishStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const current = activeStrokeRef.current
     if (!current) return
+
+    if (event.type === 'pointerup') {
+      const point = pointFromEvent(event)
+      const last = current.points.at(-1)
+      if (!last || last.x !== point.x || last.y !== point.y) current.points.push(point)
+      scheduleOverlayUpdate(point)
+    }
 
     try {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
