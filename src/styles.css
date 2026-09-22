@@ -1,0 +1,631 @@
+:root {
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #272827;
+  background: #deddd9;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: #deddd9;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 52% 14%, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 34rem),
+    linear-gradient(180deg, #e6e5e2 0%, #d8d7d3 100%);
+}
+
+button,
+canvas {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid #2f3434;
+  outline-offset: 3px;
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 48px 0 64px;
+}
+
+.app-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 0 8px 30px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.22em;
+  color: #686a68;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 54px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  font-weight: 620;
+}
+
+.app-note {
+  max-width: 310px;
+  margin: 0 0 3px;
+  color: #696b69;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.whiteboard-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.whiteboard {
+  --light-x: 36%;
+  --light-y: 18%;
+  --light-shift: -1px;
+  position: relative;
+  width: 100%;
+  padding: 0 0 46px;
+  filter: drop-shadow(0 28px 28px rgba(36, 37, 35, 0.13));
+}
+
+.board-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1.58 / 1;
+  padding: clamp(11px, 1.7vw, 20px);
+  border-radius: clamp(12px, 1.6vw, 19px);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.62), transparent 8%, transparent 90%, rgba(34,35,34,.14)),
+    linear-gradient(180deg, #fafafa 0%, #c9ccca 9%, #8f9391 49%, #dfe1df 83%, #949895 100%);
+  box-shadow:
+    0 2px 1px rgba(255, 255, 255, 0.84) inset,
+    0 -2px 2px rgba(35, 37, 36, 0.26) inset,
+    0 1px 0 rgba(28, 29, 28, 0.35),
+    0 14px 24px rgba(34, 35, 33, 0.12);
+  isolation: isolate;
+}
+
+.board-frame::before,
+.board-frame::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.board-frame::before {
+  inset: 1px;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,.58);
+  box-shadow: inset 0 0 0 1px rgba(58,60,59,.12);
+}
+
+.board-frame::after {
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 22rem at var(--light-x) var(--light-y),
+    rgba(255, 255, 255, 0.38),
+    rgba(255, 255, 255, 0.09) 38%,
+    transparent 68%
+  );
+  mix-blend-mode: screen;
+  opacity: .66;
+}
+
+.frame-reflection {
+  position: absolute;
+  z-index: 4;
+  left: 7%;
+  right: 7%;
+  top: 3px;
+  height: 4px;
+  pointer-events: none;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.18) 16%,
+    rgba(255,255,255,.88) 43%,
+    rgba(255,255,255,.25) 68%,
+    transparent
+  );
+  transform: translateX(var(--light-shift));
+  opacity: .7;
+}
+
+.board-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: clamp(5px, .75vw, 9px);
+  cursor: default;
+  background:
+    radial-gradient(circle at var(--light-x) var(--light-y), rgba(255,255,255,.98), rgba(255,255,255,0) 30%),
+    linear-gradient(160deg, #fbfcfa 0%, #f5f6f3 52%, #eef0ed 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(25, 28, 26, 0.18),
+    inset 0 0 0 1px rgba(45, 48, 45, 0.22),
+    inset 0 0 38px rgba(86, 92, 86, 0.07);
+}
+
+.board-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: .14;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+.surface-gloss {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 46% 24% at var(--light-x) calc(var(--light-y) - 2%), rgba(255,255,255,.44), transparent 74%),
+    linear-gradient(118deg, transparent 0 37%, rgba(255,255,255,.16) 44%, transparent 52% 100%);
+  opacity: .58;
+}
+
+.board-surface.has-active-tool,
+.board-surface.has-active-tool .drawing-canvas {
+  cursor: none;
+}
+
+.drawing-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: default;
+}
+
+.board-mark {
+  position: absolute;
+  z-index: 5;
+  right: 18px;
+  bottom: 13px;
+  font-size: clamp(8px, .8vw, 10px);
+  font-weight: 780;
+  letter-spacing: .19em;
+  color: rgba(48, 53, 50, .28);
+  pointer-events: none;
+  user-select: none;
+}
+
+.marker-tray {
+  position: absolute;
+  z-index: 8;
+  left: 7%;
+  right: 7%;
+  bottom: -34px;
+  height: 43px;
+  padding: 5px 14px 8px;
+  border-radius: 4px 4px 10px 10px;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.62), transparent 18%, transparent 82%, rgba(30,31,30,.13)),
+    linear-gradient(180deg, #dfe2e0 0%, #a7aaa8 18%, #d8dad8 54%, #858986 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.8),
+    inset 0 -2px 2px rgba(35,36,35,.24),
+    0 8px 10px rgba(36, 37, 35, .16),
+    0 1px 1px rgba(36, 37, 35, .25);
+}
+
+.marker-tray::after {
+  content: "";
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  top: 5px;
+  height: 10px;
+  border-radius: 2px 2px 7px 7px;
+  background: linear-gradient(180deg, rgba(66,68,66,.26), rgba(255,255,255,.22));
+  box-shadow: inset 0 2px 3px rgba(30,31,30,.22);
+  pointer-events: none;
+}
+
+.tray-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.marker-rack {
+  display: flex;
+  align-items: center;
+  gap: clamp(2px, .6vw, 10px);
+}
+
+.marker-slot,
+.eraser-slot {
+  position: relative;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.marker-slot {
+  width: clamp(74px, 10vw, 118px);
+}
+
+.marker-slot .marker-object {
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  transform: scale(.78);
+  transform-origin: left center;
+  transition: transform 150ms ease, filter 150ms ease, opacity 150ms ease;
+}
+
+.marker-slot.is-selected .marker-object {
+  opacity: .18;
+  transform: scale(.78) translateY(5px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .marker-slot:not(.is-selected):hover .marker-object {
+    transform: scale(.78) translateY(-3px) rotate(-1deg);
+    filter: drop-shadow(0 4px 3px rgba(35,36,34,.18));
+  }
+
+  .eraser-slot:not(.is-selected):hover .eraser-object {
+    transform: translateY(-3px) rotate(1deg);
+  }
+}
+
+.eraser-slot {
+  width: 86px;
+}
+
+.eraser-slot .eraser-object {
+  position: absolute;
+  right: 0;
+  top: 5px;
+  transform: scale(.72);
+  transform-origin: right center;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.eraser-slot.is-selected .eraser-object {
+  opacity: .16;
+  transform: scale(.72) translateY(5px);
+}
+
+.marker-object {
+  display: block;
+  position: relative;
+  width: 142px;
+  height: 24px;
+  filter: drop-shadow(0 3px 2px rgba(29, 30, 29, .2));
+}
+
+.marker-nib {
+  position: absolute;
+  left: -3px;
+  top: 8px;
+  width: 14px;
+  height: 9px;
+  border-radius: 5px 1px 1px 5px;
+  clip-path: polygon(0 34%, 76% 0, 100% 18%, 100% 82%, 76% 100%, 0 66%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--marker) 78%, white), var(--marker) 55%, color-mix(in srgb, var(--marker) 80%, black));
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.18);
+}
+
+.marker-neck {
+  position: absolute;
+  left: 8px;
+  top: 5px;
+  width: 14px;
+  height: 15px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #d7d8d4, #8f928f 54%, #c6c8c4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.65), inset 0 -1px 0 rgba(28,29,28,.22);
+}
+
+.marker-barrel {
+  position: absolute;
+  left: 18px;
+  top: 2px;
+  width: 102px;
+  height: 20px;
+  border-radius: 6px 3px 3px 6px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.44) 15%, transparent 38%),
+    linear-gradient(180deg, #ededeb 0%, #c8cbc8 42%, #f0f0ed 72%, #aeb1ae 100%);
+  border: 1px solid rgba(55,58,55,.22);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.8), inset 0 -2px 2px rgba(46,48,46,.12);
+}
+
+.marker-brand {
+  position: absolute;
+  left: 28px;
+  top: 5px;
+  color: rgba(37,40,38,.54);
+  font-size: 7px;
+  font-weight: 840;
+  letter-spacing: .16em;
+}
+
+.marker-band {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  width: 11px;
+  height: 100%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--marker) 84%, white), var(--marker) 56%, color-mix(in srgb, var(--marker) 80%, black));
+  box-shadow: inset 1px 0 rgba(255,255,255,.2), inset -1px 0 rgba(0,0,0,.12);
+}
+
+.marker-cap {
+  position: absolute;
+  left: 117px;
+  top: 1px;
+  width: 25px;
+  height: 22px;
+  border-radius: 2px 7px 7px 2px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.18), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--marker) 84%, white), var(--marker) 58%, color-mix(in srgb, var(--marker) 82%, black));
+  box-shadow: inset 0 1px rgba(255,255,255,.25), inset 0 -2px rgba(0,0,0,.13);
+}
+
+.marker-cap::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 2px;
+  height: 13px;
+  border-radius: 2px;
+  background: rgba(255,255,255,.16);
+}
+
+.eraser-object {
+  display: block;
+  position: relative;
+  width: 94px;
+  height: 42px;
+  filter: drop-shadow(0 4px 3px rgba(28,29,28,.22));
+}
+
+.eraser-shell {
+  position: absolute;
+  inset: 0 0 8px 0;
+  display: grid;
+  place-items: center;
+  border-radius: 7px 7px 4px 4px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.82), transparent 26%),
+    linear-gradient(180deg, #d8dad6 0%, #aeb2ad 54%, #888c88 100%);
+  border: 1px solid rgba(50,52,50,.24);
+  color: rgba(40,43,40,.45);
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: .17em;
+  box-shadow: inset 0 1px rgba(255,255,255,.7), inset 0 -2px rgba(33,34,33,.15);
+}
+
+.eraser-felt {
+  position: absolute;
+  z-index: -1;
+  left: 5px;
+  right: 5px;
+  bottom: 0;
+  height: 14px;
+  border-radius: 2px 2px 5px 5px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #484b49, #252725);
+  box-shadow: inset 0 -1px rgba(255,255,255,.08);
+}
+
+.active-tool-overlay {
+  --tool-x: 50%;
+  --tool-y: 50%;
+  --tool-angle: -38deg;
+  position: absolute;
+  z-index: 12;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(var(--tool-x), var(--tool-y), 0);
+  transition: opacity 90ms ease;
+}
+
+.active-tool-overlay.is-visible {
+  opacity: 1;
+}
+
+.active-tool-overlay .marker-object {
+  position: absolute;
+  left: -5px;
+  top: -12px;
+  transform-origin: 5px 12px;
+  transform: rotate(var(--tool-angle)) scale(.88);
+  filter: drop-shadow(7px 12px 5px rgba(30,31,30,.22));
+}
+
+.active-tool-overlay.is-drawing .marker-object {
+  transform: rotate(var(--tool-angle)) translateY(2px) scale(.88);
+  filter: drop-shadow(3px 5px 3px rgba(30,31,30,.24));
+}
+
+.active-tool-overlay .eraser-object {
+  position: absolute;
+  left: -47px;
+  top: -21px;
+  transform-origin: center;
+  transform: rotate(var(--tool-angle)) scale(.86);
+  filter: drop-shadow(5px 10px 5px rgba(30,31,30,.24));
+}
+
+.active-tool-overlay.is-drawing .eraser-object {
+  transform: rotate(var(--tool-angle)) translateY(2px) scale(.86);
+  filter: drop-shadow(2px 4px 3px rgba(30,31,30,.25));
+}
+
+.utility-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  margin-top: 18px;
+  padding: 4px;
+  border: 1px solid rgba(55, 57, 54, .12);
+  border-radius: 999px;
+  background: rgba(246, 245, 242, .62);
+  box-shadow: inset 0 1px rgba(255,255,255,.7), 0 7px 18px rgba(37,38,36,.055);
+  backdrop-filter: blur(12px);
+}
+
+.utility-bar button {
+  min-height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #4e504e;
+  font-size: 12px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.utility-bar button:disabled {
+  opacity: .32;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .utility-bar button:not(:disabled):hover {
+    background: rgba(255,255,255,.72);
+    color: #242624;
+  }
+}
+
+.utility-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: rgba(55,57,54,.13);
+}
+
+.board-hint {
+  margin: 12px 0 0;
+  color: rgba(55,57,54,.52);
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100% - 20px, 1180px);
+    padding-top: 28px;
+  }
+
+  .app-header {
+    align-items: start;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 20px;
+  }
+
+  .app-note {
+    text-align: left;
+  }
+
+  .whiteboard {
+    padding-bottom: 38px;
+  }
+
+  .board-frame {
+    aspect-ratio: 1.25 / 1;
+  }
+
+  .marker-tray {
+    left: 4%;
+    right: 4%;
+    bottom: -30px;
+    height: 38px;
+    padding-inline: 8px;
+  }
+
+  .marker-slot {
+    width: 54px;
+  }
+
+  .marker-slot .marker-object {
+    transform: scale(.55);
+  }
+
+  .marker-slot.is-selected .marker-object {
+    transform: scale(.55) translateY(5px);
+  }
+
+  .eraser-slot {
+    width: 58px;
+  }
+
+  .eraser-slot .eraser-object {
+    transform: scale(.54);
+  }
+
+  .eraser-slot.is-selected .eraser-object {
+    transform: scale(.54) translateY(5px);
+  }
+
+  .utility-bar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
