@@ -52,8 +52,13 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
 
     ctx.beginPath()
     ctx.lineWidth = effectiveWidth(stroke, (previous.pressure + current.pressure) / 2)
-    ctx.moveTo(previous.x, previous.y)
+    const start = i === 1 ? previous : {
+      x: (points[i - 2].x + previous.x) / 2,
+      y: (points[i - 2].y + previous.y) / 2,
+    }
+    ctx.moveTo(start.x, start.y)
     ctx.quadraticCurveTo(previous.x, previous.y, midX, midY)
+    if (i === points.length - 1) ctx.lineTo(current.x, current.y)
     ctx.stroke()
   }
 
