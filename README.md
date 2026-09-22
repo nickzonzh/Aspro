@@ -7,7 +7,7 @@ A small tactile whiteboard for the web. Pick a physical marker from the tray and
 - CSS-built 2.5D whiteboard with aluminium frame, tray, enamel surface, contact shadow, and pointer-reactive highlights
 - Four physical markers (black, blue, red, green)
 - Marker pickup: all tools begin in the tray; selecting one lifts it out and turns it into the drawing cursor
-- Marker pose has light visual inertia while the ink remains attached to the true pointer
+- Marker rotation eases while the nib stays attached to the true pointer
 - Physical eraser tool
 - Pressure-aware pointer input where the device exposes pressure
 - Undo / redo / clear
@@ -18,13 +18,14 @@ A small tactile whiteboard for the web. Pick a physical marker from the tray and
 ## Run locally
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Production check:
+Verification:
 
 ```bash
+npm test
 npm run build
 ```
 
@@ -34,10 +35,16 @@ The physical whiteboard is regular DOM/CSS. The ink is an independent high-DPI c
 
 `src/components/Whiteboard.tsx` owns interaction and board composition. `src/lib/strokes.ts` owns stroke rendering/replay. `src/styles.css` owns the material system and physical tool styling.
 
-## Next polish pass
+## Polish and coordinate model
 
-- tune marker silhouette and nib alignment against rendered screenshots
-- improve aluminium reflections and frame corner treatment
-- refine marker inertia / pickup / return motion
-- add more convincing dry-erase ink texture without sacrificing drawing latency
-- visual QA on touch and stylus devices
+Drawing uses a fixed 1140 x 707 logical surface, displayed with the same aspect ratio at every breakpoint. Saved ink, pressure and eraser footprints scale together when the window changes size. The tray objects fit their individual button slots down to 320px.
+
+The renderer caches committed ink and paints active strokes into a reusable opaque coverage canvas, then applies transparency once. This removes sample seams while keeping separate strokes darker at overlaps. The eraser stores its rectangular felt dimensions and angle at each sample; interpolated stamps keep fast wipes continuous.
+
+`src/lib/toolMotion.ts` handles interruptible 180ms pickup/return transitions. Pointer-down interrupts pickup immediately so ink never waits for animation. Translation and shadow are outside the rotated body, preserving a consistent scene-light direction. Reduced-motion preferences and keyboard selection skip tool travel.
+
+Autosave writes `aspro:whiteboard:v2`. Existing v1 data is retained and imported using the original desktop coordinate size: v1 did not record its canvas dimensions, so a drawing originally made on a smaller viewport cannot have its original scale reconstructed exactly. Legacy circular eraser operations replay as circles; new eraser operations use the felt rectangle.
+
+## Verification scope
+
+Pixel tests cover sparse stroke continuity, opacity at sample joins and separate-stroke crossings, pressure, rotated eraser coverage, fast wipes, resizing/DPR, and clear/undo cache invalidation. Browser checks cover desktop and narrow layouts, tool switching, undo/redo, clear, pickup/return and reduced motion. Real touch/stylus hardware and high-refresh input latency still need a hands-on feel check.

@@ -90,13 +90,12 @@ h1 {
   position: relative;
   width: 100%;
   padding: 0 0 46px;
-  filter: drop-shadow(0 28px 28px rgba(36, 37, 35, 0.13));
 }
 
 .board-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 1.58 / 1;
+  filter: drop-shadow(0 28px 28px rgba(36, 37, 35, 0.13));
   padding: clamp(11px, 1.7vw, 20px);
   border-radius: clamp(12px, 1.6vw, 19px);
   background:
@@ -162,7 +161,7 @@ h1 {
 .board-surface {
   position: relative;
   width: 100%;
-  height: 100%;
+  aspect-ratio: 1140 / 707;
   overflow: hidden;
   border-radius: clamp(5px, .75vw, 9px);
   cursor: default;
@@ -263,10 +262,14 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   height: 100%;
 }
 
 .marker-rack {
+  flex: 1;
+  max-width: 502px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: clamp(2px, .6vw, 10px);
@@ -282,50 +285,41 @@ h1 {
 }
 
 .marker-slot {
-  width: clamp(74px, 10vw, 118px);
+  flex: 1;
+  min-width: 0;
+  max-width: 118px;
+  padding: 0;
 }
 
 .marker-slot .marker-object {
   position: absolute;
   left: 2px;
   top: 7px;
-  transform: scale(.78);
+  transform: scale(var(--slot-scale, .78));
   transform-origin: left center;
-  transition: transform 150ms ease, filter 150ms ease, opacity 150ms ease;
-}
-
-.marker-slot.is-selected .marker-object {
-  opacity: .18;
-  transform: scale(.78) translateY(5px);
+  transition: transform 150ms ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .marker-slot:not(.is-selected):hover .marker-object {
-    transform: scale(.78) translateY(-3px) rotate(-1deg);
-    filter: drop-shadow(0 4px 3px rgba(35,36,34,.18));
+  .marker-slot:hover .marker-object {
+    transform: translateY(-2px) scale(var(--slot-scale, .78));
   }
-
-  .eraser-slot:not(.is-selected):hover .eraser-object {
-    transform: translateY(-3px) rotate(1deg);
+  .eraser-slot:hover .eraser-object {
+    transform: translateY(-2px) scale(var(--slot-scale, .72));
   }
 }
 
 .eraser-slot {
-  width: 86px;
+  flex: 0 0 86px;
 }
 
 .eraser-slot .eraser-object {
   position: absolute;
   right: 0;
   top: 5px;
-  transform: scale(.72);
+  transform: scale(var(--slot-scale, .72));
   transform-origin: right center;
-  transition: transform 150ms ease, opacity 150ms ease;
-}
-
-.eraser-slot.is-selected .eraser-object {
-  opacity: .16;
-  transform: scale(.72) translateY(5px);
+  transition: transform 150ms ease;
 }
 
 .marker-object {
@@ -457,53 +451,37 @@ h1 {
   box-shadow: inset 0 -1px rgba(255,255,255,.08);
 }
 
-.active-tool-overlay {
-  --tool-x: 50%;
-  --tool-y: 50%;
-  --tool-angle: -38deg;
-  position: absolute;
+.tool-flight {
+  position: fixed;
+  display: none;
   z-index: 12;
   left: 0;
   top: 0;
   width: 0;
   height: 0;
-  pointer-events: none;
   opacity: 0;
-  transform: translate3d(var(--tool-x), var(--tool-y), 0);
-  transition: opacity 90ms ease;
-}
-
-.active-tool-overlay.is-visible {
-  opacity: 1;
-}
-
-.active-tool-overlay .marker-object {
-  position: absolute;
-  /* The exposed nib tip is at (-3, 12.5) in marker-object coordinates. */
-  left: 3px;
-  top: -12.5px;
-  transform-origin: -3px 12.5px;
-  transform: rotate(var(--tool-angle)) scale(.88);
+  pointer-events: none;
   filter: drop-shadow(7px 12px 5px rgba(30,31,30,.22));
 }
 
-.active-tool-overlay.is-drawing .marker-object {
-  transform: rotate(var(--tool-angle)) scale(.86);
-  filter: drop-shadow(3px 5px 3px rgba(30,31,30,.24));
+.tool-flight.is-drawing {
+  filter: drop-shadow(3px 4px 2px rgba(30,31,30,.24));
 }
 
-.active-tool-overlay .eraser-object {
+.tool-flight .marker-object {
+  position: absolute;
+  left: 3px;
+  top: -12.5px;
+  transform-origin: -3px 12.5px;
+  filter: none;
+}
+
+.tool-flight .eraser-object {
   position: absolute;
   left: -47px;
-  top: -21px;
-  transform-origin: center;
-  transform: rotate(var(--tool-angle)) scale(.86);
-  filter: drop-shadow(5px 10px 5px rgba(30,31,30,.24));
-}
-
-.active-tool-overlay.is-drawing .eraser-object {
-  transform: rotate(var(--tool-angle)) translateY(2px) scale(.86);
-  filter: drop-shadow(2px 4px 3px rgba(30,31,30,.25));
+  top: -25px;
+  transform-origin: 47px 25px;
+  filter: none;
 }
 
 .utility-bar {
@@ -556,6 +534,7 @@ h1 {
   margin: 12px 0 0;
   color: rgba(55,57,54,.52);
   font-size: 11px;
+  text-align: center;
 }
 
 @media (max-width: 720px) {
@@ -579,10 +558,6 @@ h1 {
     padding-bottom: 38px;
   }
 
-  .board-frame {
-    aspect-ratio: 1.25 / 1;
-  }
-
   .marker-tray {
     left: 4%;
     right: 4%;
@@ -591,29 +566,8 @@ h1 {
     padding-inline: 8px;
   }
 
-  .marker-slot {
-    width: 54px;
-  }
-
-  .marker-slot .marker-object {
-    transform: scale(.55);
-  }
-
-  .marker-slot.is-selected .marker-object {
-    transform: scale(.55) translateY(5px);
-  }
-
-  .eraser-slot {
-    width: 58px;
-  }
-
-  .eraser-slot .eraser-object {
-    transform: scale(.54);
-  }
-
-  .eraser-slot.is-selected .eraser-object {
-    transform: scale(.54) translateY(5px);
-  }
+  .tray-inner { gap: 8px; }
+  .eraser-slot { flex-basis: 58px; }
 
   .utility-bar {
     flex-wrap: wrap;
