@@ -20,14 +20,37 @@ test('sparse marker samples produce continuous ink all the way to the endpoint',
   for (let x = 30; x <= 350; x++) assert.ok(alpha(canvas, x, 100) > 200, `Gap at ${x}`)
 })
 
-test('dense samples have uniform opacity, while separate strokes still darken at crossings', () => {
+test('ink variation stays subtle and independent of sample density; crossings build density', () => {
   const canvas = createCanvas(400, 200)
   paint(canvas, marker(Array.from({ length: 101 }, (_, i) => point(40 + i * 3, 100))))
+  const sparse = createCanvas(400, 200)
+  paint(sparse, marker([point(40, 100), point(340, 100)]))
   const values = Array.from({ length: 291 }, (_, i) => alpha(canvas, 45 + i, 100))
-  assert.ok(Math.max(...values) - Math.min(...values) <= 1, 'Overlapping segments must not form dark beads')
+  const sparseValues = Array.from({ length: 291 }, (_, i) => alpha(sparse, 45 + i, 100))
+  assert.deepEqual(values, sparseValues, 'Input sampling must not add dark beads or change ink density')
+  assert.ok(Math.min(...values) >= 204 && Math.max(...values) <= 220, 'Keep opacity variation within six percent')
+  assert.ok(Math.max(...values) - Math.min(...values) >= 5, 'Ink should have perceptible, restrained density variation')
   const before = alpha(canvas, 200, 100)
   paint(canvas, marker([point(200, 40), point(200, 160)]))
   assert.ok(alpha(canvas, 200, 100) > before + 20)
+})
+
+test('stationary contact keeps its ink when duplicate pointer samples arrive', () => {
+  const canvas = createCanvas(100, 100)
+  paint(canvas, marker([point(50, 50), point(50, 50), point(50, 50)]))
+  assert.ok(alpha(canvas, 50, 50) > 200)
+})
+
+test('textured ink replays exactly and stays stable as an active stroke grows', () => {
+  const canvas = createCanvas(400, 200), replay = createCanvas(400, 200)
+  const stroke = marker([point(30, 100), point(150, 100), point(260, 100)])
+  paint(canvas, stroke)
+  paint(replay, JSON.parse(JSON.stringify(stroke)))
+  const pixels = (target, width = 400) => target.getContext('2d').getImageData(0, 0, width, 200).data
+  assert.deepEqual(pixels(canvas), pixels(replay), 'Reload/undo/export must preserve deposited texture')
+  replay.getContext('2d').clearRect(0, 0, 400, 200)
+  paint(replay, { ...stroke, points: [...stroke.points, point(350, 100)] })
+  assert.deepEqual(pixels(canvas, 180), pixels(replay, 180), 'Existing ink must not shimmer as new samples arrive')
 })
 
 test('pressure changes the painted width', () => {

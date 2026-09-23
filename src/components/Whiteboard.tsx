@@ -62,6 +62,7 @@ export function Whiteboard() {
   const renderFrameRef = useRef<number | null>(null)
   const previousPointerRef = useRef<{ x: number; y: number } | null>(null)
   const angleRef = useRef(-38)
+  const pendingToolRef = useRef<Parameters<ReturnType<typeof createToolMotion>['move']> | null>(null)
   const [strokes, setStrokes] = useState<Stroke[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
@@ -80,6 +81,11 @@ export function Whiteboard() {
 
   const render = useCallback(() => {
     rendererRef.current?.render(strokesRef.current, activeStrokeRef.current)
+    // Commit nib position and fresh ink in the same frame, including coalesced input.
+    if (pendingToolRef.current) {
+      motionRef.current?.move(...pendingToolRef.current)
+      pendingToolRef.current = null
+    }
   }, [])
   const scheduleRender = () => {
     if (renderFrameRef.current !== null) return
@@ -135,17 +141,24 @@ export function Whiteboard() {
     if (!id) return
     const previous = previousPointerRef.current
     const dx = previous ? clientX - previous.x : 0, dy = previous ? clientY - previous.y : 0
-    if (Math.hypot(dx, dy) > .35) {
+    const distance = Math.hypot(dx, dy)
+    if (distance > .35) {
       const target = id === 'eraser'
-        ? Math.max(-12, Math.min(12, dx * .7))
+        ? (dx / distance) * 9 + (dy / distance) * 3
         : Math.max(-62, Math.min(-20, Math.atan2(dy, dx) * 180 / Math.PI - 42))
-      angleRef.current += (target - angleRef.current) * .18
+      // Eraser lean follows travel distance, so sparse and coalesced input agree.
+      angleRef.current += (target - angleRef.current) * (id === 'eraser' ? 1 - Math.exp(-distance / 22) : .18)
     }
     previousPointerRef.current = { x: clientX, y: clientY }
-    motionRef.current?.move(id, {
+    const movement: NonNullable<typeof pendingToolRef.current> = [id, {
       x: clientX, y: clientY, angle: angleRef.current,
       scale: (id === 'eraser' ? .86 : drawing ? .86 : .88) * toolScale(),
-    }, drawing, pickup)
+    }, drawing, pickup]
+    if (drawing) pendingToolRef.current = movement
+    else {
+      pendingToolRef.current = null
+      motionRef.current?.move(...movement)
+    }
   }
   const sample = (event: { clientX: number; clientY: number; pointerType: string; pressure: number }): Point => {
     const rect = surfaceRef.current!.getBoundingClientRect()
