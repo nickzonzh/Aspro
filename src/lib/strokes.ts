@@ -42,6 +42,58 @@ function stampEraser(ctx: CanvasRenderingContext2D, point: Point, stroke: Stroke
   ctx.fill()
 }
 
+// Stable in board coordinates: neither replay nor another pointer sample should
+// make the deposited ink shimmer. The two scales avoid a regular scalloped edge.
+function inkWidth(stroke: Stroke, point: Point) {
+  const variation = Math.sin(point.x * .83 + point.y * .47) * .022
+    + Math.sin(point.x * .21 - point.y * .37) * .016
+  return effectiveWidth(stroke, point.pressure) * (1 + variation)
+}
+
+function markerSegment(ctx: CanvasRenderingContext2D, stroke: Stroke, a: Point, control: Point, b: Point) {
+  const length = Math.hypot(control.x - a.x, control.y - a.y) + Math.hypot(b.x - control.x, b.y - control.y)
+  const steps = Math.max(1, Math.ceil(length / 2.5))
+  let previous = a
+  for (let step = 1; step <= steps; step++) {
+    const t = step / steps, s = 1 - t
+    const current = {
+      x: s * s * a.x + 2 * s * t * control.x + t * t * b.x,
+      y: s * s * a.y + 2 * s * t * control.y + t * t * b.y,
+      pressure: a.pressure + (b.pressure - a.pressure) * t,
+    }
+    ctx.beginPath()
+    ctx.lineWidth = inkWidth(stroke, current)
+    ctx.moveTo(previous.x, previous.y)
+    ctx.lineTo(current.x, current.y)
+    ctx.stroke()
+    previous = current
+  }
+}
+
+function softenInk(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+  let seed = 2166136261
+  for (const char of stroke.id) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619)
+  const random = () => {
+    seed = Math.imul(seed, 1664525) + 1013904223 | 0
+    return (seed >>> 0) / 4294967296
+  }
+  // Very light variations in deposited ink, applied to the opaque union once.
+  // A separate stroke still builds density where it crosses previous ink.
+  const wash = ctx.createLinearGradient(0, 0, BOARD_WIDTH, BOARD_HEIGHT * .42)
+  for (let i = 0; i <= 80; i++) wash.addColorStop(i / 80, `rgba(0,0,0,${random() * .065})`)
+  const pad = stroke.width
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+  for (const point of stroke.points) {
+    left = Math.min(left, point.x); right = Math.max(right, point.x)
+    top = Math.min(top, point.y); bottom = Math.max(bottom, point.y)
+  }
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.fillStyle = wash
+  ctx.fillRect(left - pad, top - pad, right - left + pad * 2, bottom - top + pad * 2)
+  ctx.restore()
+}
+
 // Paint opaque coverage. Composite once per stroke to avoid dark sample seams.
 function paintCoverage(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   const { points } = stroke
@@ -66,17 +118,24 @@ function paintCoverage(ctx: CanvasRenderingContext2D, stroke: Stroke) {
     }
     return
   }
-  if (points.length === 1) {
-    ctx.beginPath()
-    ctx.arc(points[0].x, points[0].y, effectiveWidth(stroke, points[0].pressure) / 2, 0, Math.PI * 2)
-    ctx.fill()
-    return
-  }
+  // Repeated stationary samples still leave the initial contact mark.
+  ctx.beginPath()
+  ctx.arc(points[0].x, points[0].y, (stroke.tool === 'marker' ? inkWidth(stroke, points[0]) : stroke.width) / 2, 0, Math.PI * 2)
+  ctx.fill()
+  if (points.length === 1) return
   for (let i = 1; i < points.length; i++) {
     const previous = points[i - 1], current = points[i]
     const start = i === 1 ? previous : {
       x: (points[i - 2].x + previous.x) / 2,
       y: (points[i - 2].y + previous.y) / 2,
+      pressure: (points[i - 2].pressure + previous.pressure) / 2,
+    }
+    if (stroke.tool === 'marker') {
+      const end = { x: (previous.x + current.x) / 2, y: (previous.y + current.y) / 2,
+        pressure: (previous.pressure + current.pressure) / 2 }
+      markerSegment(ctx, stroke, start, previous, end)
+      if (i === points.length - 1) markerSegment(ctx, stroke, end, current, current)
+      continue
     }
     ctx.beginPath()
     ctx.lineWidth = effectiveWidth(stroke, (previous.pressure + current.pressure) / 2)
@@ -94,6 +153,7 @@ export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, covera
   ink.clearRect(0, 0, coverage.width, coverage.height)
   ink.setTransform(ctx.getTransform())
   paintCoverage(ink, stroke)
+  if (stroke.tool === 'marker') softenInk(ink, stroke)
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over'

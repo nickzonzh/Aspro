@@ -39,9 +39,11 @@ The physical whiteboard is regular DOM/CSS. The ink is an independent high-DPI c
 
 Drawing uses a fixed 1140 x 707 logical surface, displayed with the same aspect ratio at every breakpoint. Saved ink, pressure and eraser footprints scale together when the window changes size. The tray objects fit their individual button slots down to 320px.
 
-The renderer caches committed ink and paints active strokes into a reusable opaque coverage canvas, then applies transparency once. This removes sample seams while keeping separate strokes darker at overlaps. The eraser stores its rectangular felt dimensions and angle at each sample; interpolated stamps keep fast wipes continuous.
+The renderer caches committed ink and paints active strokes into a reusable opaque coverage canvas, then applies transparency once. Tiny spatial width changes and a deterministic opacity wash give the ink slight edge and density variation without sample seams. Texture stays stable through redraw, undo and autosave; separate strokes darken at overlaps. Stationary repeated samples retain the initial contact dot. The eraser stores its rectangular felt dimensions and angle at each sample; interpolated stamps keep fast wipes continuous.
 
-`src/lib/toolMotion.ts` handles interruptible 180ms pickup/return transitions. Pointer-down interrupts pickup immediately so ink never waits for animation. Translation and shadow are outside the rotated body, preserving a consistent scene-light direction. Reduced-motion preferences and keyboard selection skip tool travel.
+`src/lib/toolMotion.ts` handles interruptible 180ms pickup/return transitions. Pointer-down interrupts pickup immediately so ink never waits for animation. While drawing, the tool pose and fresh ink are committed in the same animation frame. Translation and shadow are outside the rotated body, preserving a consistent scene-light direction. Reduced-motion preferences and keyboard selection skip tool travel.
+
+Contact shadows tighten while drawing. The eraser leans gently with drag direction; its shell compresses by about 1px while the felt footprint stays unchanged. Parked objects use close contact shadows, and the enamel reflection passes faintly over the ink. Below 720px, narrower page margins and frame padding increase usable surface area while preserving the drawing's aspect ratio.
 
 Autosave writes `aspro:whiteboard:v2`. Existing v1 data is retained and imported using the original desktop coordinate size: v1 did not record its canvas dimensions, so a drawing originally made on a smaller viewport cannot have its original scale reconstructed exactly. Legacy circular eraser operations replay as circles; new eraser operations use the felt rectangle.
 
